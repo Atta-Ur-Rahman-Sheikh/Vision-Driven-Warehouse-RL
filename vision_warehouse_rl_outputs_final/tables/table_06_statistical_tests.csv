@@ -1,0 +1,7 @@
+Comparison,P_Value,Significance,Cohens_d
+DQN-Vision vs Random,0.221907,ns,0.1145
+DQN-Vision vs Nearest-WMS,9e-06,***,-0.5907
+DQN-Vision vs Hungarian-WMS,0.0,***,-0.7047
+DQN-Vision vs Genetic-WMS,3e-06,***,-0.6326
+DQN-Vision vs Q-Learning,0.152651,ns,0.149
+DQN-Vision vs Constrained-DQN,0.477254,ns,0.0662

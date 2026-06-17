@@ -1,0 +1,8 @@
+Algorithm,Compute_sec,Throughput
+Random,1.78,19.053
+Nearest-WMS,1.81,25.473
+Hungarian-WMS,1.78,26.513
+Genetic-WMS,3.22,26.033
+Q-Learning,12.21,18.84
+DQN-Vision,301.45,20.007
+Constrained-DQN,301.99,19.48

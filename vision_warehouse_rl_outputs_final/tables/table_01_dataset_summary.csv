@@ -1,0 +1,13 @@
+Variable,N,Mean,Std,Min,Median,Max
+forklifts,1000,0.4842,0.3009,0.0,0.4706,1.0
+Per unload docks,1000,0.4887,0.3113,0.0,0.5,1.0
+Per order assembling,1000,0.4956,0.3066,0.0,0.5,1.0
+Unloading trucks per hour,1000,0.5024,0.3127,0.0,0.5,1.0
+Loading trucks per hour,1000,0.4956,0.316,0.0,0.5,1.0
+orders per hour,1000,0.495,0.3189,0.0,0.5,1.0
+Trucks capacity,1000,0.5008,0.2964,0.0,0.5,1.0
+Minimum order size,1000,0.491,0.5002,0.0,0.0,1.0
+Maximum order size,1000,0.4858,0.3382,0.0,0.4,1.0
+orders_per_forklift,1000,2161.947,12217.8262,0.0,1.0,100000.0
+truck_efficiency,1000,4583.287,23356.7774,0.0,2.0,190000.0
+order_size_ratio,1000,8739.4168,23365.4379,0.0,1.0256,100000.0

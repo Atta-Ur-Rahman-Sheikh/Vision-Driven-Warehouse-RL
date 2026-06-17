@@ -1,0 +1,438 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usetikzlibrary{positioning}
+\usepackage{hyperref}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Vision-Driven Deep Reinforcement Learning for Dynamic Warehouse Task and Robot Allocation: A Congestion-Aware Benchmark Study}
+
+\author{\IEEEauthorblockN{Atta Ur Rahman Sheikh}
+\IEEEauthorblockA{\textit{Department of Artificial Intelligence} \\
+\textit{Ghulam Ishaq Khan Institute of Technology}\\
+Topi 23640, Pakistan \\
+atta03217220484@giki.edu.pk}
+\and
+\IEEEauthorblockN{Raja Hashim Ali}
+\IEEEauthorblockA{\textit{Department of Business} \\
+\textit{Univ. of Europe for Applied Sciences}\\
+Potsdam 14469, Germany \\
+hashim.ali@ue-germany.de}
+}
+
+\maketitle
+
+\begin{abstract}
+Modern warehouse operations increasingly rely on mobile robot fleets for order fulfillment, yet warehouse management systems depend on static records that diverge from physical reality due to congestion, blocked aisles, and misplaced inventory.
+Real-time visual perception offers a promising pathway toward adaptive, congestion-aware robot dispatch, but rigorous benchmarks comparing vision-augmented reinforcement learning with established optimization heuristics under realistic uncertainty remain scarce.
+Existing literature either evaluates reinforcement learning in isolation without classical baselines or omits perception noise, leaving practitioners without clear guidance on when learned policies justify their computational overhead.
+This paper addresses whether vision-derived state representation meaningfully improves dynamic robot task allocation compared to warehouse management system heuristics under shared perception noise.
+We implement a reproducible closed-loop benchmark in a congestion-aware 8x8 grid simulator calibrated from a public warehouse-operation dataset, comparing seven allocation strategies encompassing heuristic, combinatorial-optimization, and deep reinforcement learning approaches.
+Evaluation across 150 episodes per algorithm and three random seeds measures throughput, completion time, travel distance, battery consumption, near-collisions, and priority fairness.
+Results demonstrate that classical heuristics, particularly Hungarian assignment achieving 26.51 tasks per episode, significantly outperform vision-augmented deep Q-network achieving 20.01 tasks per episode, while DQN remains stable under perception noise.
+Ablation under short retraining budgets shows mixed effects: removing the occupancy proxy can increase throughput but at higher collision cost, and stronger collision penalties do not consistently improve safety in the tested configuration.
+These findings establish a transparent logistics benchmark and provide actionable guidance on the conditions under which classical optimization remains preferable to deep reinforcement learning in compact warehouse environments.
+\end{abstract}
+
+\begin{IEEEkeywords}
+warehouse logistics, mobile robot task allocation, deep reinforcement learning, warehouse management systems, congestion-aware routing, perception noise, benchmark study, Hungarian assignment
+\end{IEEEkeywords}
+
+
+% -------------------------------------------------------
+\section{Introduction}
+% -------------------------------------------------------
+
+Automated warehouses have become a critical backbone of global supply chains, with mobile robot systems taking on the responsibility of transporting goods between storage locations, picking stations, and dispatch areas \cite{wurman2008coordinating}.
+Task allocation --- deciding which robot should serve which order at any given time --- is central to operational efficiency, directly governing throughput, energy consumption, and delivery latency \cite{boysen2019warehousing}.
+Classical warehouse management systems (WMS) maintain a digital record of inventory positions, robot states, and pending orders, and feed this structured information into assignment algorithms that range from simple nearest-task greedy heuristics to combinatorial optimization routines \cite{enright2011optimization}.
+Reinforcement learning (RL) has emerged as an alternative paradigm in which agents learn allocation policies through trial-and-error interaction, acquiring behaviors adapted to environment dynamics without explicit programming \cite{sutton2018reinforcement}.
+Deep RL in particular has attracted significant research attention due to its ability to process high-dimensional state representations, including visual data from overhead cameras or laser scans that can reveal congestion patterns not captured by WMS records \cite{li2021reinforcement}.
+The integration of vision into robot dispatch therefore offers a compelling hypothesis: if robots can perceive blocked aisles, crowded zones, and dynamic obstacles in real time, their allocation decisions should be more robust than those driven by potentially stale WMS data alone.
+
+The practical importance of this research question has intensified as e-commerce growth continues to impose tighter fulfillment windows and higher order volumes on warehouse operators worldwide \cite{moons2019integrating}.
+Traditional rule-based WMS schedulers were designed for relatively stable environments, but modern warehouses experience frequent disruptions including forklift crossings, human picker movement, and pallet misplacement, all of which create transient congestion that degrades static-plan performance \cite{fragapane2021planning}.
+Autonomous mobile robots equipped with on-board or overhead cameras can potentially sense these disturbances directly, providing occupancy information that RL-based allocators could exploit for proactive congestion avoidance \cite{open2021autonomous}.
+Despite this theoretical advantage, it remains unclear whether lightweight deep RL architectures --- feasible for real-time deployment --- can actually outperform well-tuned classical heuristics in the metrics that matter most to logistics operators: tasks completed, time-to-completion, energy use, and safety \cite{zhang2021robot}.
+The absence of shared, reproducible benchmarks with identical evaluation conditions across algorithmic families makes cross-paper comparisons unreliable and hinders practitioners from making evidence-based technology choices \cite{gu2017deep}.
+This work addresses that gap directly.
+
+\subsection{Related Work}
+
+Prior research on warehouse robot task allocation spans three broad methodological traditions: operations research heuristics, combinatorial optimization, and reinforcement learning.
+The Hungarian algorithm for optimal bipartite assignment has been applied to robot dispatch since the early automated warehouse literature, offering polynomial-time optimality guarantees under static conditions \cite{burkard2009assignment}.
+Genetic algorithms and other metaheuristic approaches have been used to approximate multi-objective assignment problems in dynamic settings where optimality is computationally intractable \cite{xin2017automated}.
+Tabular Q-learning has been explored for small-scale warehouse routing, demonstrating convergence but suffering from the curse of dimensionality as grid sizes and robot counts increase \cite{zhang2021robot}.
+Deep Q-networks (DQN) introduced by Mnih et al.\ extended tabular RL to high-dimensional state spaces, and subsequent work applied DQN variants to mobile robot navigation and multi-agent coordination \cite{mnih2015human}.
+Multi-agent reinforcement learning approaches have been evaluated on warehouse-scale simulations, typically outperforming random allocation but rarely benchmarked against state-of-the-art WMS heuristics under identical noise conditions \cite{li2021reinforcement}.
+Vision-based robot control using convolutional neural networks has demonstrated strong performance in picking and navigation tasks, but end-to-end visual task allocation at the fleet level remains an open problem \cite{zeng2020transporter}.
+Table~\ref{tab:LiteratureSummary} summarizes the key contributions of related works along several methodological dimensions.
+
+\begin{table*}[!ht]
+\centering
+\caption{Literature review summarizing key methodological features of related work on warehouse robot task allocation. Checkmarks denote features explicitly addressed; dashes denote features not considered. This work is the first to combine all seven dimensions in a shared reproducible benchmark.}
+\label{tab:LiteratureSummary}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{|l|c|c|c|c|c|c|c|}
+\hline
+\textbf{Work} & \textbf{WMS Baselines} & \textbf{RL Methods} & \textbf{Vision State} & \textbf{Perception Noise} & \textbf{Congestion} & \textbf{Ablation} & \textbf{Multi-Seed} \\
+\hline
+Wurman et al.~\cite{wurman2008coordinating} & \checkmark & -- & -- & -- & -- & -- & -- \\
+\hline
+Enright \& Wurman~\cite{enright2011optimization} & \checkmark & -- & -- & -- & \checkmark & -- & -- \\
+\hline
+Zhang et al.~\cite{zhang2021robot} & -- & \checkmark & -- & -- & -- & -- & -- \\
+\hline
+Mnih et al.~\cite{mnih2015human} & -- & \checkmark & \checkmark & -- & -- & -- & -- \\
+\hline
+Li et al.~\cite{li2021reinforcement} & -- & \checkmark & -- & -- & \checkmark & -- & -- \\
+\hline
+Fragapane et al.~\cite{fragapane2021planning} & \checkmark & -- & -- & -- & \checkmark & -- & -- \\
+\hline
+\textbf{Proposed (This Work)} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\hline
+\end{tabular}
+\end{table*}
+
+\subsection{Dataset}
+
+The empirical calibration in this study relies on the Warehouse Operation Dataset publicly available on Kaggle \cite{warehouse_dataset_2024}.
+The dataset contains 1,000 operational records spanning 12 continuous variables that characterize warehouse throughput, forklift utilization, order assembly time, truck loading and unloading rates, and order size distributions.
+Key variables used for simulator calibration include \textit{orders per hour} (mean 0.495, used to derive task arrival rate), \textit{Per order assembling} (mean 0.496, used to set service step duration), \textit{forklifts} (mean 0.484, used to calibrate congestion probability), and \textit{order\_size\_ratio} (mean 8739.42, used for distance scaling).
+Figure~\ref{Fig:dataset_eda} presents vertically stacked histograms for four calibration-relevant variables (with outliers clipped at the 99th percentile for readability), a correlation heatmap, and an order-rate tercile bar chart.
+Order rate terciles reveal a relatively balanced workload distribution, suggesting the calibrated simulator represents moderate-to-high activity conditions typical of active distribution centers.
+The dataset does not include synchronized camera images or robot position logs, so vision is modeled as a spatial occupancy proxy rather than raw imagery, a design choice we elaborate in Section~\ref{sec:methodology}.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.47\textwidth]{figures/fig_01_dataset_eda.pdf}
+\caption{Exploratory data analysis of the Warehouse Operation Dataset (N=1,000), shown as vertically stacked panels for paper readability. Panels (A)--(D) show histograms with mean markers (dashed red) for orders per hour, forklift utilization, order assembly load, and truck capacity. Panel (E) presents the pairwise correlation matrix across calibration variables. Panel (F) shows the count of records in low, medium, and high order-rate terciles. These statistics were used to calibrate task arrival rate, service duration, and congestion probability.}
+\label{Fig:dataset_eda}
+\end{figure}
+
+\subsection{Gap Analysis}
+
+Despite growing interest in RL-based robot dispatch, the existing literature exhibits three systematic gaps that limit its utility for warehouse practitioners.
+First, reinforcement learning papers rarely include competitive WMS baselines, making it impossible to determine whether the complexity and training overhead of RL is justified relative to classical assignment algorithms that operators already use \cite{boysen2019warehousing}.
+Second, perception noise --- the discrepancy between what sensors report and the true state of the warehouse --- is almost universally omitted from benchmark environments, yet it is a fundamental challenge in physical deployments where camera occlusion, lighting variation, and object detection errors are routine \cite{fragapane2021planning}.
+Third, reproducibility is poor across the literature due to inconsistent evaluation protocols, varying episode lengths, non-standardized metrics, and the use of proprietary simulation environments that cannot be shared or replicated, preventing rigorous cross-method comparison \cite{gu2017deep}.
+The present work addresses all three gaps simultaneously by providing a unified benchmark that evaluates four WMS heuristics and three RL methods under identical conditions, introduces shared perception noise affecting all allocators, and releases the full implementation as an open Kaggle notebook with fixed evaluation seeds.
+
+\subsection{Problem Statement}
+
+This study addresses the following research questions.
+
+\begin{enumerate}
+    \item Does vision-derived occupancy state improve dynamic robot task allocation over information-system state estimates alone?
+    \item Which allocation strategy provides the best throughput-safety trade-off across classical and learned methods?
+    \item How do lightweight vision-augmented RL agents compare against combinatorial WMS heuristics on downstream logistics key performance indicators?
+    \item How robust is each method's performance to increasing levels of shared task-position and occupancy perception noise?
+    \item Can safety constraints in DQN reduce near-collision events without unacceptable sacrifice of task throughput?
+\end{enumerate}
+
+\subsection{Novelty and Contributions}
+
+The primary novelty of this paper lies in providing the first reproducible, multi-algorithm logistics benchmark that jointly evaluates WMS optimization baselines and vision-augmented deep RL under shared perception noise and dynamic congestion in a calibrated warehouse simulator.
+Unlike prior work that evaluates RL in isolation or against only random baselines, this study includes Hungarian assignment and genetic optimization as strong polynomial-time competitors, establishing a realistic performance ceiling for learned policies to target.
+The benchmark contributes five additional elements: (1) a congestion-aware 8x8 grid simulator calibrated from public warehouse-operation statistics, enabling reproducible experimentation without proprietary infrastructure; (2) a shared perception noise model applied uniformly across all algorithms, ensuring fair comparison under realistic sensing uncertainty; (3) six downstream logistics key performance indicators including throughput, completion time, travel distance, battery consumption, near-collision rate, and priority fairness; (4) a structured ablation study isolating the contributions of visual state, priority weighting, and safety-constrained rewards within the DQN family; and (5) robustness curves across six noise levels permitting analysis of graceful degradation under degraded sensing.
+Our main finding --- that classical WMS methods significantly outperform lightweight DQN at this scale while DQN remains stable under noise --- provides a nuanced, evidence-based answer to the practitioner question of when RL justifies its training and computational overhead.
+
+
+% -------------------------------------------------------
+\section{Methodology}
+\label{sec:methodology}
+% -------------------------------------------------------
+
+\subsection{Overall Workflow}
+
+The experimental pipeline proceeds through five sequential stages.
+In the first stage, calibration statistics are extracted from the Warehouse Operation Dataset, including mean task arrival rate, service duration, congestion probability, and priority weight distribution, which parameterize the simulation environment to reflect realistic operational conditions.
+In the second stage, the calibrated simulator instantiates an 8x8 grid warehouse with fixed shelf layouts, three mobile robots, up to six concurrent tasks, and a dynamic congestion module that introduces and clears aisle blocks stochastically throughout each episode.
+In the third stage, seven allocation algorithms are applied to the same simulator: four WMS heuristics operating on noisy task-position estimates and three RL agents using either a tabular Q-table or a deep Q-network trained with a 61-dimensional vision-augmented state vector.
+In the fourth stage, each algorithm is evaluated for 150 episodes across three fixed random seeds, with performance recorded across all six logistics key performance indicators, and robustness experiments repeat evaluation at six shared noise levels.
+In the fifth stage, ablation variants isolate the individual contribution of vision state, priority weighting, and collision penalty within the DQN family, and statistical significance tests quantify the magnitude and reliability of cross-algorithm performance differences.
+Figure~\ref{Fig:warehouse} visualizes the grid environment and the effect of perception noise on occupancy.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.47\textwidth]{figures/fig_02_warehouse_layout.pdf}
+\caption{Vertically stacked visualization of the 8x8 congestion-aware warehouse grid. Panel (A) shows ground-truth occupancy with gray shelf cells, orange dynamic congestion blocks, blue/purple/green robot markers, and priority-colored task markers. Panel (B) shows the same layout under noisy perception ($\sigma=0.18$), illustrating uncertainty in spatial state. RL agents receive a 4x4 downsampled version of this occupancy map as a vision proxy.}
+\label{Fig:warehouse}
+\end{figure}
+
+\subsection{Simulator Design and Calibration}
+
+The warehouse is modeled as an 8x8 grid with fixed shelving units occupying alternating rows (rows 1, 3, 5, and 7, columns 1 through 6), leaving aisles at the grid periphery and between shelf blocks.
+Three robots initialize at fixed spawn positions (0,0), (2,0), and (4,0) at the start of each episode, each carrying a battery of 100 units that decrements by 0.4 per movement step and triggers a negative reward signal when depleted below 15\%.
+Up to six tasks are active simultaneously, with each task assigned one of three priority levels according to the calibrated priority weights (P1: 50\%, P2: 35\%, P3: 15\%), where higher-priority tasks yield larger completion bonuses.
+Dynamic congestion is modeled by blocking random aisle cells with probability 0.167 per step and clearing them with probability 0.10, simulating transient obstacles from forklifts, workers, and misplaced pallets.
+Robot movement uses breadth-first search (BFS) pathfinding to route around both permanent shelf cells and active dynamic blocks, and Manhattan distance is accumulated as the travel distance metric.
+Near-collisions are recorded whenever any pair of robots comes within Manhattan distance one of each other, providing a safety surrogate metric without simulating full physical contact dynamics.
+Calibrated parameters, summarized in Table~\ref{tab:DatasetSummary}, were derived directly from column means of the warehouse-operation dataset: task arrival rate 0.125 tasks per step, service steps 5, congestion probability 0.167, and episode length 150 steps.
+
+\begin{table}[!ht]
+\centering
+\caption{Summary statistics for calibration variables from the Warehouse Operation Dataset (N = 1,000) and their derived simulator roles. Raw variables are normalized to [0,1] in the source dataset except order\_size\_ratio.}
+\label{tab:DatasetSummary}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Variable} & \textbf{Mean} & \textbf{Std} & \textbf{Simulator Role} \\
+\hline
+orders per hour & 0.495 & 0.319 & Task arrival (0.125/step) \\
+Per order assembling & 0.496 & 0.307 & Service steps (5) \\
+forklifts & 0.484 & 0.301 & Congestion prob.\ (0.167) \\
+order\_size\_ratio & 8739.42 & 23365.44 & Distance scaling \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Vision State Representation}
+
+Because the public dataset does not include synchronized overhead camera imagery, vision is represented as a downsampled spatial occupancy proxy rather than raw pixel input from a camera feed.
+At each decision step, the full 8x8 grid is pooled into a 4x4 occupancy map (16 values) where each 2x2 sub-grid contributes a single intensity value encoding the dominant occupant type: shelf cells contribute 1.0, dynamic blocks 0.85, robots 0.5, and free space 0.0.
+This representation captures spatial structure and congestion patterns at a resolution sufficient to distinguish blocked corridors from open paths, while remaining compact enough for a lightweight multi-layer perceptron policy network.
+Gaussian noise with standard deviation $\sigma$ is added to both the occupancy map values and the raw task-position estimates used by all algorithms during robustness experiments, ensuring that noise affects WMS heuristics and RL agents symmetrically and evaluation is not biased in favor of either approach.
+We emphasize that this design is a vision-inspired state proxy and does not constitute end-to-end visual object detection; future work could replace the occupancy-grid abstraction with features extracted from a real convolutional detector trained on warehouse imagery.
+
+\subsection{Allocation Algorithms}
+
+Seven allocation strategies are evaluated, divided into two families.
+
+The WMS heuristic family comprises four algorithms.
+\textit{Random} assigns idle robots to available tasks uniformly at random, serving as a lower-bound baseline.
+\textit{Nearest-WMS} greedily assigns each idle robot to the closest available task using Manhattan distance computed on noisy WMS task-position estimates.
+\textit{Hungarian-WMS} solves the minimum-cost bipartite matching problem between idle robots and available tasks using the Hungarian algorithm \cite{burkard2009assignment}, with Manhattan distance as the cost metric.
+\textit{Genetic-WMS} draws 48 random assignment samples per step and selects the lowest-cost assignment, approximating combinatorial optimization without solving the assignment exactly.
+
+The RL family comprises three agents.
+\textit{Q-Learning} uses a tabular Q-table with a discretized state representation and is trained for 400 episodes with an epsilon-greedy policy.
+\textit{DQN-Vision} is a deep Q-network with three fully connected layers (256, 128, and 6 units), Double DQN target network updates every 30 steps, a replay buffer of 30,000 transitions, and action masking to prevent assignment of unavailable tasks; it is trained for 600 episodes on the 61-dimensional vision-augmented state vector.
+\textit{Constrained-DQN} uses identical architecture and training to DQN-Vision but increases the near-collision penalty from $-3.0$ to $-8.0$ to investigate the safety-throughput trade-off.
+DQN hyperparameters include learning rate $5 \times 10^{-4}$, discount factor $\gamma = 0.97$, batch size 128, epsilon decay from 1.0 to 0.05 at rate 0.996, and Adam optimizer.
+
+\subsection{State Vector and Reward Function}
+
+The RL state vector has 61 dimensions: 12 robot features (position $x$ and $y$, battery level, and busy flag for each of 3 robots), 30 task features (perceived $x$ and $y$ position, priority level, availability flag, and BFS distance for each of 6 tasks), 16 vision occupancy values from the 4x4 downsampled map, and a 3-dimensional one-hot encoding identifying which robot is currently making the assignment decision.
+The reward function assigns +10.0 for each task completion, plus a priority bonus of 0.0 for P1 (low urgency), +1.5 for P2, and +3.0 for P3 (high urgency) tasks.
+Step penalties of $-0.02 \times 3$ are applied at every timestep to incentivize speed, a low-battery penalty of $-1.5$ triggers below 15\% charge, and a near-collision penalty of $-3.0$ (or $-8.0$ for Constrained-DQN) is incurred whenever two robots enter each other's proximity radius.
+
+\subsection{Evaluation Protocol}
+
+All seven algorithms are evaluated for 50 episodes per random seed across three seeds (42, 123, and 456), yielding 150 evaluation episodes per algorithm.
+RL policies are deployed in greedy mode ($\epsilon = 0$) during evaluation.
+Robustness experiments evaluate five algorithms (the three WMS methods plus DQN-Vision and Constrained-DQN) at six noise levels ($\sigma \in \{0.0, 0.05, 0.10, 0.15, 0.25, 0.35\}$) for 40 episodes each.
+Ablation variants are trained for 200 episodes each and evaluated on seeds 42 and 123 for 30 episodes each.
+Statistical significance of throughput differences between DQN-Vision and all other algorithms is assessed using two-sided Mann-Whitney U tests on the 150-episode main evaluation, with Cohen's $d$ as the effect-size measure \cite{mann1947test}.
+Priority fairness is quantified using Jain's index $J = (\sum x_i)^2 / (n \sum x_i^2)$, where $x_i$ denotes mean completion time for priority level $i$, with values approaching 1.0 indicating equitable treatment across priority classes \cite{jain1984quantitative}.
+Supplementary per-seed summaries (Table~\ref{tab:MultiSeed}) use a shorter 20-episode check per seed and are reported separately from the primary 150-episode results.
+
+
+% -------------------------------------------------------
+\section{Results}
+% -------------------------------------------------------
+
+\subsection{Main Algorithm Comparison}
+
+Table~\ref{tab:MainComparison} presents mean performance across all seven algorithms over 150 evaluation episodes.
+Hungarian-WMS achieves the highest throughput at 26.51 $\pm$ 10.52 tasks per episode, followed closely by Genetic-WMS at 26.03 $\pm$ 11.03 and Nearest-WMS at 25.47 $\pm$ 10.56.
+DQN-Vision reaches 20.01 $\pm$ 7.74 tasks per episode, which represents a 24.5\% throughput deficit relative to Hungarian-WMS.
+Nearest-WMS records the fewest near-collisions at 30.21 $\pm$ 34.45, compared to 40.45 $\pm$ 32.14 for DQN-Vision, while also achieving the shortest completion time at 9.87 $\pm$ 2.84 steps.
+Q-Learning is the weakest RL method at 18.84 $\pm$ 7.92 tasks per episode, and DQN-Vision's advantage over Q-Learning is modest at 6.2\%.
+All methods achieve Jain fairness indices above 0.91, indicating relatively equitable priority-level handling across the experimental conditions.
+Figure~\ref{Fig:AlgoComparison} illustrates throughput and related KPIs as vertically stacked bar panels for each metric.
+
+\begin{table*}[!ht]
+\centering
+\caption{Mean performance across seven allocation algorithms evaluated over 150 episodes (3 seeds $\times$ 50 episodes). Best result in each column is bolded. All metrics are reported as mean $\pm$ standard deviation.}
+\label{tab:MainComparison}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{|l|c|c|c|c|c|c|c|}
+\hline
+\textbf{Algorithm} & \textbf{Tasks} & \textbf{ComplT} & \textbf{Dist} & \textbf{Colls} & \textbf{Batt} & \textbf{Fair} & \textbf{Reward} \\
+\hline
+Random           & 19.05 $\pm$ 8.88  & 13.10 $\pm$ 3.90 & 144.49 $\pm$ 69.67 & 43.51 $\pm$ 36.88 & 57.80 $\pm$ 27.87 & 0.929 $\pm$ 0.087 & 69.51 $\pm$ 155.46 \\
+Nearest-WMS      & 25.47 $\pm$ 10.56 & 9.87 $\pm$ 2.84  & 111.94 $\pm$ 49.97 & \textbf{30.21 $\pm$ 34.45} & \textbf{44.78 $\pm$ 19.99} & 0.910 $\pm$ 0.099 & 179.93 $\pm$ 156.09 \\
+\textbf{Hungarian-WMS}    & \textbf{26.51 $\pm$ 10.52} & \textbf{9.46 $\pm$ 2.57}  & 112.45 $\pm$ 46.85 & 32.05 $\pm$ 38.95 & 44.98 $\pm$ 18.74 & 0.914 $\pm$ 0.102 & \textbf{185.56 $\pm$ 166.31} \\
+Genetic-WMS      & 26.03 $\pm$ 11.03 & 9.28 $\pm$ 2.16  & 112.85 $\pm$ 51.85 & 33.90 $\pm$ 33.40 & 45.14 $\pm$ 20.74 & 0.926 $\pm$ 0.082 & 175.13 $\pm$ 156.07 \\
+Q-Learning       & 18.84 $\pm$ 7.92  & 12.72 $\pm$ 3.54 & 139.57 $\pm$ 60.12 & 38.30 $\pm$ 32.22 & 55.83 $\pm$ 24.05 & 0.931 $\pm$ 0.079 & 83.05 $\pm$ 124.72 \\
+DQN-Vision       & 20.01 $\pm$ 7.74  & 13.33 $\pm$ 4.14 & 151.48 $\pm$ 59.42 & 40.45 $\pm$ 32.14 & 60.59 $\pm$ 23.77 & 0.922 $\pm$ 0.100 & 89.13 $\pm$ 125.06 \\
+Constrained-DQN  & 19.48 $\pm$ 8.17  & 12.83 $\pm$ 3.84 & 145.09 $\pm$ 67.08 & 41.73 $\pm$ 32.52 & 58.04 $\pm$ 26.83 & 0.924 $\pm$ 0.093 & 79.80 $\pm$ 126.66 \\
+\hline
+\end{tabular}
+\end{table*}
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.47\textwidth]{figures/fig_04_algorithm_comparison.pdf}
+\caption{Vertically stacked bar charts comparing all seven algorithms on five logistics KPIs: throughput, completion time, travel distance, near-collisions, and fairness. Each panel shows mean $\pm$ 95\% confidence interval over 150 evaluation episodes. WMS heuristics consistently outperform RL methods on throughput and completion time, while Nearest-WMS records the lowest collision count.}
+\label{Fig:AlgoComparison}
+\end{figure}
+
+\subsection{Statistical Significance}
+
+Table~\ref{tab:StatTests} reports Mann-Whitney U test results comparing DQN-Vision throughput against all other algorithms on the 150-episode main evaluation.
+Differences between DQN-Vision and all three WMS heuristics are highly significant ($p < 0.001$, $|d| > 0.59$ in all cases), with Hungarian-WMS showing the largest effect size at Cohen's $d = -0.70$.
+DQN-Vision does not significantly outperform Random ($p = 0.222$, $d = +0.11$) or Q-Learning ($p = 0.153$, $d = +0.15$), and the difference from Constrained-DQN is negligible ($p = 0.477$, $d = +0.07$).
+Table~\ref{tab:MultiSeed} reports supplementary per-seed throughput from a shorter 20-episode check; ranking trends are consistent, but absolute values are lower than Table~\ref{tab:MainComparison} because of the reduced sample size.
+
+\begin{table}[!ht]
+\centering
+\caption{Mann-Whitney U test results comparing DQN-Vision throughput against each other algorithm (150 episodes). Cohen's $d$ is positive when DQN-Vision exceeds the comparison. Significance: *** $p<0.001$, ns = not significant.}
+\label{tab:StatTests}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Comparison} & \textbf{$p$-value} & \textbf{Sig.} & \textbf{Cohen's $d$} \\
+\hline
+DQN-Vision vs Random         & 0.222    & ns  & +0.11 \\
+DQN-Vision vs Nearest-WMS    & $9\times10^{-6}$ & *** & $-0.59$ \\
+DQN-Vision vs Hungarian-WMS  & $<0.001$ & *** & $-0.70$ \\
+DQN-Vision vs Genetic-WMS    & $3\times10^{-6}$ & *** & $-0.63$ \\
+DQN-Vision vs Q-Learning     & 0.153    & ns  & +0.15 \\
+DQN-Vision vs Constrained-DQN & 0.477   & ns  & +0.07 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[!ht]
+\centering
+\caption{Supplementary per-seed throughput (tasks/episode) from 20 evaluation episodes per seed. Primary results in Table~\ref{tab:MainComparison} use 50 episodes per seed (150 total).}
+\label{tab:MultiSeed}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Algorithm} & \textbf{Seed 42} & \textbf{Seed 123} & \textbf{Seed 456} & \textbf{Mean} \\
+\hline
+Random           & 15.25 & 18.65 & 20.80 & 18.23 \\
+Nearest-WMS      & 26.55 & 26.65 & 24.15 & 25.78 \\
+Hungarian-WMS    & 29.85 & 24.10 & 22.15 & 25.37 \\
+Genetic-WMS      & 31.55 & 27.55 & 27.45 & 28.85 \\
+Q-Learning       & 16.50 & 13.55 & 16.60 & 15.55 \\
+DQN-Vision       & 17.30 & 16.85 & 16.65 & 16.93 \\
+Constrained-DQN  & 18.60 & 18.60 & 18.45 & 18.55 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Perception Noise Robustness}
+
+Figure~\ref{Fig:Noise} shows throughput, near-collisions, and relative throughput change at six noise levels for five methods.
+DQN-Vision throughput ranges from 16.83 at $\sigma = 0.0$ to 18.75 at $\sigma = 0.35$, indicating stable policy behavior with only 11.4\% variation across the tested range.
+Nearest-WMS maintains high throughput (25.65--27.68 tasks/episode) and its collision rate drops from 46.98 at $\sigma = 0.0$ to 27.50 at $\sigma = 0.35$.
+Hungarian-WMS throughput under the noise protocol declines from 24.80 at $\sigma = 0.0$ to 22.88 at $\sigma = 0.35$ (7.7\% relative decrease).
+DQN-Vision collision counts remain elevated (33.3--52.3 across $\sigma$), indicating limited adaptive safety response to increased sensing uncertainty.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.47\textwidth]{figures/fig_06_noise_robustness.pdf}
+\caption{Vertically stacked robustness panels: (top) throughput vs.\ perception noise $\sigma$; (middle) near-collisions vs.\ $\sigma$; (bottom) relative throughput change from the zero-noise baseline. Shared Gaussian noise is applied to task-position estimates for all methods; RL agents additionally receive noisy occupancy maps.}
+\label{Fig:Noise}
+\end{figure}
+
+\subsection{Ablation Study}
+
+Table~\ref{tab:Ablation} reports four DQN variants after 200 training episodes (30 evaluation episodes per seed on seeds 42 and 123).
+Removing the vision occupancy proxy increases throughput from 17.30 to 19.90 tasks/episode (+15.0\%) but raises near-collisions from 37.05 to 51.98 (+40.3\%), indicating a safety--information trade-off rather than a uniform benefit from vision state under this training budget.
+Removing priority weighting yields 17.97 tasks/episode and 41.53 collisions, a modest change relative to the full model.
+The Constrained-Only variant ($-8.0$ collision penalty) achieves 17.90 tasks/episode and 50.17 collisions, showing that the stronger penalty did not reduce conflicts in this ablation configuration.
+Figure~\ref{Fig:Ablation} presents these results as vertically stacked bar panels.
+
+\begin{table}[!ht]
+\centering
+\caption{Ablation study: four DQN variants (200 training episodes; 30 eval episodes per seed on seeds 42 and 123). Constrained Only uses collision penalty $-8.0$; others use $-3.0$.}
+\label{tab:Ablation}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Variant} & \textbf{Throughput} & \textbf{Collisions} & \textbf{Fairness} \\
+\hline
+Full DQN (V+P)   & 17.30 & 37.05 & 0.912 \\
+No Vision        & \textbf{19.90} & 51.98 & 0.937 \\
+No Priority      & 17.97 & 41.53 & 0.921 \\
+Constrained Only & 17.90 & 50.17 & 0.910 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.47\textwidth]{figures/fig_07_ablation_study.pdf}
+\caption{Vertically stacked ablation bar charts for throughput, near-collisions, and Jain fairness across four DQN variants. Results highlight mixed component effects under the 200-episode ablation budget rather than uniform improvement from vision or safety penalties alone.}
+\label{Fig:Ablation}
+\end{figure}
+
+\subsection{Computational Cost}
+
+Table~\ref{tab:Compute} compares wall-clock time and throughput for all seven algorithms.
+WMS heuristics require approximately 1.8--3.2 seconds for the full 150-episode evaluation run, while DQN-Vision and Constrained-DQN require 301.45 and 301.99 seconds respectively --- roughly 169$\times$ more compute than Hungarian-WMS.
+Genetic-WMS delivers 26.03 tasks per episode in 3.22 seconds, approximately 94$\times$ faster than DQN-Vision at higher throughput.
+
+\begin{table}[!ht]
+\centering
+\caption{Wall-clock evaluation time (seconds for 150 episodes) versus mean throughput. RL inference dominates runtime relative to WMS heuristics.}
+\label{tab:Compute}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Algorithm} & \textbf{Compute (s)} & \textbf{Throughput} \\
+\hline
+Random           & 1.78   & 19.05 \\
+Nearest-WMS      & 1.81   & 25.47 \\
+Hungarian-WMS    & 1.78   & 26.51 \\
+Genetic-WMS      & 3.22   & 26.03 \\
+Q-Learning       & 12.21  & 18.84 \\
+DQN-Vision       & 301.45 & 20.01 \\
+Constrained-DQN  & 301.99 & 19.48 \\
+\hline
+\end{tabular}
+\end{table}
+
+
+% -------------------------------------------------------
+\section{Discussion}
+% -------------------------------------------------------
+
+The most prominent finding of this benchmark is the decisive advantage of classical WMS assignment algorithms over lightweight deep RL in the primary 150-episode evaluation.
+The 8x8 grid with 3 robots and 6 concurrent tasks presents a combinatorially small assignment problem where polynomial-time exact solvers and greedy heuristics operate effectively without learned representations \cite{burkard2009assignment}.
+In such low-dimensional settings, DQN's function-approximation capacity is neither necessary nor particularly beneficial.
+
+Regarding RQ1, vision-derived occupancy did not improve overall allocation performance relative to WMS heuristics.
+Within the ablation set, removing vision increased throughput but worsened collisions, suggesting the occupancy proxy adds safety-relevant spatial information at a throughput cost under short retraining --- not a clear net benefit at this scale.
+Regarding RQ3, Hungarian-WMS and Genetic-WMS dominate DQN-Vision on throughput, completion time, and compute efficiency.
+Regarding RQ4, DQN-Vision remains stable under noise (11.4\% throughput span), while WMS methods retain higher absolute throughput at every tested $\sigma$.
+Regarding RQ5, the Constrained-DQN variant neither beat WMS on collisions in the main evaluation (41.73 vs.\ 30.21 for Nearest-WMS) nor reduced collisions in the ablation relative to Full DQN, indicating that penalty tuning alone is insufficient without longer training or architectural changes.
+
+Limitations include the small grid, occupancy proxy instead of camera-based perception, single DQN architecture, and ablation training limited to 200 episodes.
+Future work should scale the environment, integrate real detection features, and compare PPO/SAC and constrained RL variants.
+
+
+% -------------------------------------------------------
+\section{Conclusion}
+% -------------------------------------------------------
+
+This paper presented a reproducible, congestion-aware benchmark for warehouse robot task allocation under shared perception uncertainty.
+Seven algorithms were evaluated over 150 episodes per method across three seeds, with noise robustness tests and ablation analysis.
+Hungarian-WMS achieved the highest throughput (26.51 tasks/episode) and significantly outperformed DQN-Vision (20.01 tasks/episode), while operating at approximately 169$\times$ lower computational cost.
+DQN-Vision remained stable under perception noise, but classical WMS methods maintained superior logistics KPIs throughout.
+Ablation results were mixed: vision occupancy correlated with lower collision counts but reduced throughput under the tested training budget.
+For compact warehouse environments with small robot fleets, classical combinatorial assignment remains the deployment-ready choice; vision-augmented RL warrants further study at industrial scale.
+The benchmark is released as an open Kaggle notebook for reproducible follow-up research.
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{Bibliography}
+
+\end{document}

@@ -1,0 +1,8 @@
+Algorithm,Data_Source,tasks_mean,tasks_std,ct_mean,ct_std,dist_mean,dist_std,colls_mean,colls_std,batt_mean,batt_std,fairness_mean,fairness_std,reward_mean,reward_std
+Random,kaggle:Updated_Warehouse_Operations_Dataset.csv,19.0533,8.8753,13.1022,3.899,144.4933,69.6716,43.5067,36.8792,57.7973,27.8686,0.9287,0.0873,69.5133,155.4591
+Nearest-WMS,kaggle:Updated_Warehouse_Operations_Dataset.csv,25.4733,10.5576,9.8708,2.8442,111.94,49.9719,30.2133,34.4536,44.776,19.9888,0.9098,0.0992,179.9333,156.0875
+Hungarian-WMS,kaggle:Updated_Warehouse_Operations_Dataset.csv,26.5133,10.5184,9.4592,2.5673,112.4533,46.8461,32.0467,38.9472,44.9813,18.7384,0.9138,0.1017,185.5633,166.3099
+Genetic-WMS,kaggle:Updated_Warehouse_Operations_Dataset.csv,26.0333,11.0293,9.2788,2.1621,112.8467,51.8548,33.9,33.3958,45.1387,20.7419,0.9263,0.0822,175.1333,156.0705
+Q-Learning,kaggle:Updated_Warehouse_Operations_Dataset.csv,18.84,7.9171,12.7196,3.5412,139.5733,60.1189,38.3,32.2165,55.8293,24.0476,0.9305,0.0788,83.05,124.7192
+DQN-Vision,kaggle:Updated_Warehouse_Operations_Dataset.csv,20.0067,7.7369,13.3341,4.1352,151.48,59.423,40.4533,32.1394,60.592,23.7692,0.9223,0.0995,89.1267,125.0596
+Constrained-DQN,kaggle:Updated_Warehouse_Operations_Dataset.csv,19.48,8.1721,12.8315,3.8357,145.0933,67.0782,41.7333,32.5209,58.0373,26.8313,0.9237,0.0932,79.8,126.6581
